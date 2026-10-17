@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>課堂用節拍器</title>
+<style>
+:root{
+  --bg:#0f1420; --panel:#1b2233; --text:#f2f5fb; --sub:#9aa7c0;
+  --accent:#ff6b3d; --beat:#3d9bff; --off:#2c3550; --go:#1fa855; --stop:#e0364a; --btn:#2a3552; --sel:#ffd23d; --seltext:#111;
+}
+[data-theme="light"]{
+  --bg:#f4f6fa; --panel:#ffffff; --text:#1a2233; --sub:#5a667d;
+  --accent:#e0481a; --beat:#1a73e8; --off:#d5dae6; --go:#188a45; --stop:#c8283b; --btn:#e1e6f0; --sel:#1a2233; --seltext:#fff;
+}
+[data-theme="contrast"]{
+  --bg:#000; --panel:#000; --text:#fff; --sub:#ffe600;
+  --accent:#ff3b30; --beat:#00e5ff; --off:#333; --go:#00c853; --stop:#ff1744; --btn:#222; --sel:#ffe600; --seltext:#000;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",sans-serif;
+  display:flex;flex-direction:column;gap:2vh;padding:2vh 3vw;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none;
+}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{margin:0;font-size:clamp(18px,3vw,30px)}
+.themes{display:flex;gap:8px}
+button{
+  font:inherit;color:var(--text);background:var(--btn);border:3px solid transparent;
+  border-radius:14px;cursor:pointer;
+}
+button:focus-visible{outline:4px solid var(--sel)}
+.themes button{padding:8px 14px;font-size:clamp(14px,2vw,20px)}
+.themes button.on,.sig button.on{background:var(--sel);color:var(--seltext);font-weight:700}
+.bpmwrap{text-align:center}
+#bpm{
+  font-size:clamp(90px,24vh,260px);font-weight:800;line-height:1;
+  background:none;border:none;color:var(--text);text-align:center;width:100%;
+  font-family:inherit;font-variant-numeric:tabular-nums;
+}
+#bpm:focus{outline:3px solid var(--sel);border-radius:12px}
+.unit{color:var(--sub);font-size:clamp(14px,2.4vw,26px)}
+.dots{display:flex;justify-content:center;gap:2.5vw;align-items:center;min-height:14vh}
+.dot{
+  width:clamp(40px,10vh,110px);height:clamp(40px,10vh,110px);border-radius:50%;
+  background:var(--off);transition:background .12s,transform .12s,box-shadow .12s;
+}
+.dot.first{border:4px solid var(--accent)}
+.dot.flash{background:var(--beat);transform:scale(1.25);box-shadow:0 0 40px var(--beat);transition:none}
+.dot.first.flash{background:var(--accent);box-shadow:0 0 50px var(--accent)}
+.row{display:flex;gap:1.5vw;justify-content:center;align-items:center}
+.adj button{font-size:clamp(18px,3.5vh,34px);min-width:clamp(56px,9vw,110px);padding:1.4vh 1vw}
+#slider{width:100%;height:6vh;accent-color:var(--sel)}
+.sig button{flex:1;font-size:clamp(22px,5vh,48px);padding:1.6vh 0;max-width:22vw}
+.tools{display:flex;gap:1.5vw}
+#tap{flex:1;font-size:clamp(20px,4vh,40px);padding:2vh 0}
+#go{
+  width:100%;height:20vh;min-height:90px;font-size:clamp(34px,9vh,90px);font-weight:800;
+  background:var(--go);color:#fff;border-radius:24px;
+}
+#go.playing{background:var(--stop)}
+.hint{text-align:center;color:var(--sub);font-size:clamp(12px,1.8vw,18px)}
+@media (max-height:620px){ .hint{display:none} }
+</style>
+</head>
+<body data-theme="dark">
+<header>
+  <h1>🥁 課堂用節拍器</h1>
+  <div class="themes" role="group" aria-label="顏色模式">
+    <button data-theme-btn="dark">深色</button>
+    <button data-theme-btn="light">淺色</button>
+    <button data-theme-btn="contrast">高對比</button>
+  </div>
+</header>
+
+<div class="bpmwrap">
+  <input id="bpm" type="number" inputmode="numeric" min="40" max="240" value="120" aria-label="BPM">
+  <div class="unit">BPM(每分鐘拍數;6/8 以八分音符計)</div>
+</div>
+
+<div class="dots" id="dots" aria-hidden="true"></div>
+
+<input id="slider" type="range" min="40" max="240" value="120" aria-label="BPM 滑桿">
+<div class="row adj">
+  <button data-d="-5">−5</button><button data-d="-1">−1</button>
+  <button data-d="1">+1</button><button data-d="5">+5</button>
+</div>
+
+<div class="row sig" id="sig" role="group" aria-label="拍號">
+  <button data-s="2/4">2/4</button><button data-s="3/4">3/4</button>
+  <button data-s="4/4">4/4</button><button data-s="6/8">6/8</button>
+</div>
+
+<div class="tools"><button id="tap">👆 點拍測速(Tap Tempo)</button></div>
+
+<button id="go">▶ 開始</button>
+<div class="hint">快捷鍵:空白鍵 開始/停止 ・ ↑↓ 調整 BPM ・ T 點拍測速</div>
+
+<script>
+(function(){
+  var MIN=40, MAX=240;
+  var bpm=120, beats=4, playing=false;
+  var ctx=null, timer=null, nextTime=0, beatIdx=0, queue=[], raf=null, wake=null;
+  var $=function(id){return document.getElementById(id)};
+  var bpmEl=$('bpm'), slider=$('slider'), dotsEl=$('dots'), goBtn=$('go');
+
+  function clamp(v){v=Math.round(Number(v));if(isNaN(v))v=bpm;return Math.max(MIN,Math.min(MAX,v))}
+  function setBpm(v){bpm=clamp(v);bpmEl.value=bpm;slider.value=bpm;}
+
+  /* ---- 拍號 ---- */
+  function setSig(s){
+    beats=parseInt(s.split('/')[0],10)*(s==='6/8'?1:1); // 2/4→2, 3/4→3, 4/4→4, 6/8→6
+    beatIdx=0;
+    [].forEach.call($('sig').children,function(b){b.classList.toggle('on',b.dataset.s===s)});
+    dotsEl.innerHTML='';
+    for(var i=0;i<beats;i++){var d=document.createElement('div');d.className='dot'+(i===0?' first':'');dotsEl.appendChild(d)}
+    queue.length=0;
+  }
+
+  /* ---- 發聲 ---- */
+  function click(t,accent){
+    var o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='square'; o.frequency.value=accent?1200:800;
+    var peak=accent?0.9:0.55;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(peak,t+0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+    o.connect(g);g.connect(ctx.destination);
+    o.start(t);o.stop(t+0.06);
+  }
+
+  /* ---- 排程(Web Audio 時鐘,不漂移) ---- */
+  function scheduler(){
+    var ahead=document.hidden?1.5:0.12; // 背景分頁計時器會被降頻,加大緩衝
+    while(nextTime<ctx.currentTime+ahead){
+      var acc=beatIdx===0;
+      click(nextTime,acc);
+      queue.push({t:nextTime,i:beatIdx});
+      nextTime+=60/bpm;
+      beatIdx=(beatIdx+1)%beats;
+    }
+  }
+
+  /* ---- 視覺 ---- */
+  var lit=-1,litUntil=0;
+  function draw(){
+    if(!playing)return;
+    var now=ctx.currentTime;
+    while(queue.length&&queue[0].t<=now){
+      var e=queue.shift();
+      if(lit>=0&&dotsEl.children[lit])dotsEl.children[lit].classList.remove('flash');
+      lit=e.i;
+      if(dotsEl.children[lit])dotsEl.children[lit].classList.add('flash');
+      litUntil=now+Math.min(0.12,60/bpm*0.5);
+    }
+    if(lit>=0&&now>litUntil){
+      if(dotsEl.children[lit])dotsEl.children[lit].classList.remove('flash');
+      lit=-1;
+    }
+    raf=requestAnimationFrame(draw);
+  }
+
+  /* ---- 開始/停止 ---- */
+  function start(){
+    if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)()}
+    if(ctx.state==='suspended')ctx.resume();
+    playing=true;beatIdx=0;queue.length=0;
+    nextTime=ctx.currentTime+0.08;
+    scheduler();
+    timer=setInterval(scheduler,25);
+    raf=requestAnimationFrame(draw);
+    goBtn.textContent='■ 停止';goBtn.classList.add('playing');
+    if(navigator.wakeLock){navigator.wakeLock.request('screen').then(function(l){wake=l}).catch(function(){})}
+  }
+  function stop(){
+    playing=false;clearInterval(timer);cancelAnimationFrame(raf);
+    queue.length=0;lit=-1;
+    [].forEach.call(dotsEl.children,function(d){d.classList.remove('flash')});
+    goBtn.textContent='▶ 開始';goBtn.classList.remove('playing');
+    if(wake){wake.release().catch(function(){});wake=null}
+  }
+  function toggle(){playing?stop():start()}
+  document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='visible'&&playing&&navigator.wakeLock&&!wake){
+      navigator.wakeLock.request('screen').then(function(l){wake=l}).catch(function(){});
+    }
+  });
+
+  /* ---- Tap Tempo ---- */
+  var taps=[];
+  function tap(){
+    var n=performance.now();
+    if(taps.length&&n-taps[taps.length-1]>2000)taps=[];
+    taps.push(n);
+    if(taps.length>6)taps.shift();
+    if(taps.length>=2){
+      var avg=(taps[taps.length-1]-taps[0])/(taps.length-1);
+      setBpm(60000/avg);
+    }
+  }
+
+  /* ---- 主題 ---- */
+  function setTheme(t){
+    document.body.dataset.theme=t;
+    [].forEach.call(document.querySelectorAll('[data-theme-btn]'),function(b){b.classList.toggle('on',b.dataset.themeBtn===t)});
+    try{localStorage.setItem('metro-theme',t)}catch(e){}
+  }
+
+  /* ---- 事件 ---- */
+  goBtn.addEventListener('click',toggle);
+  $('tap').addEventListener('click',tap);
+  slider.addEventListener('input',function(){setBpm(slider.value)});
+  bpmEl.addEventListener('change',function(){setBpm(bpmEl.value)});
+  bpmEl.addEventListener('keydown',function(e){if(e.key==='Enter'){setBpm(bpmEl.value);bpmEl.blur()}});
+  [].forEach.call(document.querySelectorAll('.adj button'),function(b){
+    b.addEventListener('click',function(){setBpm(bpm+Number(b.dataset.d))});
+  });
+  $('sig').addEventListener('click',function(e){if(e.target.dataset.s)setSig(e.target.dataset.s)});
+  [].forEach.call(document.querySelectorAll('[data-theme-btn]'),function(b){
+    b.addEventListener('click',function(){setTheme(b.dataset.themeBtn)});
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.target===bpmEl)return;
+    if(e.code==='Space'){e.preventDefault();if(document.activeElement)document.activeElement.blur();toggle()}
+    else if(e.key==='ArrowUp'){e.preventDefault();setBpm(bpm+1)}
+    else if(e.key==='ArrowDown'){e.preventDefault();setBpm(bpm-1)}
+    else if(e.key==='t'||e.key==='T'){tap()}
+  });
+
+  var saved=null;try{saved=localStorage.getItem('metro-theme')}catch(e){}
+  setTheme(saved||'dark');
+  setSig('4/4');
+  setBpm(120);
+})();
+</script>
+</body>
+</html>
